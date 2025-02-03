@@ -1,3 +1,6 @@
+#define UNICODE
+#define _UNICODE
+
 #include <windows.h>
 #include <iostream>
 #include <fstream>
@@ -5,32 +8,32 @@
 #include <string>
 #include <map>
 
-std::map<std::string, double> profile_float;
-std::map<std::string, long long int> profile_int;
-std::map<std::string, std::string> profile_str;
+std::map<std::wstring, double> profile_float;
+std::map<std::wstring, long long int> profile_int;
+std::map<std::wstring, std::wstring> profile_str;
 
-std::regex pattern_float("([\\w]*)=([0-9]+\\.[0-9]+)");
-std::regex pattern_int("([\\w]*)=([0-9]+)");
-std::regex pattern_hex("([\\w]*)=0[xX]([0-9a-fA-F]+)");
-std::regex pattern_bin("([\\w]*)=0[bB]([0-1]+)");
-std::regex pattern_word("([\\w]*)=([\\w]*)");
-std::regex pattern_squot("([\\w]*)=\'([^\\s]*)\'");
-std::regex pattern_dquot("([\\w]*)=\"([^\\s]*)\"");
+std::wregex pattern_float(L"([\\w]*)=([0-9]+\\.[0-9]+)");
+std::wregex pattern_int(L"([\\w]*)=([0-9]+)");
+std::wregex pattern_hex(L"([\\w]*)=0[xX]([0-9a-fA-F]+)");
+std::wregex pattern_bin(L"([\\w]*)=0[bB]([0-1]+)");
+std::wregex pattern_word(L"([\\w]*)=([\\w]*)");
+std::wregex pattern_squot(L"([\\w]*)=\'([^\\s]*)\'");
+std::wregex pattern_dquot(L"([\\w]*)=\"([^\\s]*)\"");
 
-void profile_ini(std::string path_ini) {
-	std::ifstream ini_file(path_ini);
+void profile_ini(std::wstring path_ini) {
+	std::wifstream ini_file(path_ini);
 
-	std::string line;
+	std::wstring line;
 	while (std::getline(ini_file, line)) {
 		bool comment = false;
 		for (size_t i = 0; i < line.length(); i++) {
 			bool flag = false;
 			switch (line[i]) {
-				case ' ':
+				case L' ':
 					break;
-				case '\t':
+				case L'\t':
 					break;
-				case '#':
+				case L'#':
 					comment = true;
 					flag = true;
 					break;
@@ -47,7 +50,7 @@ void profile_ini(std::string path_ini) {
 			continue;
 		}
 
-		std::smatch match;
+		std::wsmatch match;
 		if (std::regex_search(line, match, pattern_float)) {
 			profile_float[match[1]] = std::stod(match[2]);
 		}
@@ -72,77 +75,58 @@ void profile_ini(std::string path_ini) {
 	}
 }
 
-bool startup(std::string app, std::string cmd, int argc, char* argv[])
+void startup(std::wstring app, std::wstring cmd, int argc, wchar_t* argv[])
 {
-	// Success Boolean
-	BOOL success = 0;
-
 	// Build full command
-	for (int i = argc - 1; i > 0; i) {
-		std::string shortcut = "%" + std::to_string(i);
+	for (int i = argc - 1; i > 0; i--) {
+		std::wstring shortcut = L"%" + std::to_wstring(i);
 		size_t start_pos = cmd.find(shortcut);
-		if(start_pos != std::string::npos) {
-			cmd.replace(start_pos, shortcut.length(), std::string(argv[i]));
+		if(start_pos != std::wstring::npos) {
+			cmd.replace(start_pos, shortcut.length(), argv[i]);
 		}
 	}
+	cmd = L"\"" + app + L"\" " + cmd;
 
 	// Additional information
 	STARTUPINFO si;
 	PROCESS_INFORMATION pi;
 
 	// Set the size of the structures
-	ZeroMemory( &si, sizeof(si) );
+	ZeroMemory(&si, sizeof(si));
 	si.cb = sizeof(si);
-	ZeroMemory( &pi, sizeof(pi) );
+	ZeroMemory(&pi, sizeof(pi));
 
 	// Start the program up
-	success = CreateProcess(
-		(LPCSTR)app.c_str(),			// The path
-		(LPSTR)cmd.c_str(),				// Command line
-		NULL,							// Process handle not inheritable
-		NULL,							// Thread handle not inheritable
-		FALSE,							// Set handle inheritance to FALSE
-		0,								// No creation flags
-		NULL,							// Use parent's environment block
-		NULL,							// Use parent's starting directory
-		&si,							// Pointer to STARTUPINFO structure
-		&pi								// Pointer to PROCESS_INFORMATION structure (removed extra parentheses)
-	);
-	if (!success) {
-		return success;
+	if (CreateProcess(nullptr, (LPWSTR)cmd.c_str(), nullptr, nullptr, false, 0, nullptr, nullptr, &si, &pi))
+	{
+		WaitForSingleObject(pi.hProcess, INFINITE);
+		CloseHandle(pi.hProcess);
+		CloseHandle(pi.hThread);
 	}
-
-	// Close process and thread handles.
-	success = CloseHandle(pi.hProcess);
-	if (!success) {
-		return success;
-	}
-	success = CloseHandle(pi.hThread);
-	if (!success) {
-		return success;
-	}
-	return success;
 }
 
-int main(int argc, char* argv[]) {
+int __stdcall wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR lpCmdLine, int nCmdShow) {
+	int argc;
+	wchar_t **argv = CommandLineToArgvW(GetCommandLineW(), &argc);
+
 	if (argc < 1) {
-		std::cerr << "Executable Path not found." << std::endl;
+		MessageBox(nullptr, L"Executable Path not found.", L"Error", MB_ICONERROR);
 		return -1;
 	}
 
-	std::string full_path = argv[0];
-	std::string exe_path = full_path.substr(full_path.find_last_of("/\\") + 1);
-	std::string ini_path = exe_path;
-	ini_path[ini_path.length() - 3] = 'i';
-	ini_path[ini_path.length() - 2] = 'n';
-	ini_path[ini_path.length() - 1] = 'i';
+	std::wstring full_path = argv[0];
+	std::wstring exe_path = full_path.substr(full_path.find_last_of(L"/\\") + 1);
+	std::wstring ini_path = exe_path;
+	ini_path[ini_path.length() - 3] = L'i';
+	ini_path[ini_path.length() - 2] = L'n';
+	ini_path[ini_path.length() - 1] = L'i';
 	profile_ini(ini_path);
 
 	if (argc < 2) {
-		std::cerr << "File Path not found." << std::endl;
+		MessageBox(nullptr, L"File Path not found.", L"Error", MB_ICONERROR);
 		return -1;
 	}
 
-	startup(profile_str["PATH"], profile_str["CMD"], argc, argv);
+	startup(profile_str[L"PATH"], profile_str[L"CMD"], argc, argv);
 	return 0;
 }
